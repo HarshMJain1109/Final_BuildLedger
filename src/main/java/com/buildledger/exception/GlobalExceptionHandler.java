@@ -59,6 +59,13 @@ public class GlobalExceptionHandler {
         return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage(), request);
     }
 
+    @ExceptionHandler(DuplicatePaymentException.class)
+    public ResponseEntity<ErrorResponse> handleDuplicatePayment(
+            DuplicatePaymentException ex, WebRequest req) {
+        log.warn("Duplicate payment attempt: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.CONFLICT, "DUPLICATE_PAYMENT", req);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ValidationErrorResponse> handleValidationException(
             MethodArgumentNotValidException ex, WebRequest request) {
@@ -105,6 +112,20 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleDisabledException(
             DisabledException ex, WebRequest request) {
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Account is disabled.", request);
+    }
+
+    @ExceptionHandler(VendorNotActiveException.class)
+    public ResponseEntity<ErrorResponse> handleVendorNotActive(
+            VendorNotActiveException ex, WebRequest req) {
+        log.warn("Vendor not active: {}", ex.getMessage());
+        return buildErrorResponse(HttpStatus.UNPROCESSABLE_ENTITY, "VENDOR_NOT_ACTIVE" , req);
+    }
+
+    @ExceptionHandler(InvalidRoleAssignmentException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidRoleAssignment(
+            InvalidRoleAssignmentException ex, WebRequest req) {
+        log.warn("Invalid role assignment attempt for role '{}': {}", ex.getAttemptedRole(), ex.getMessage());
+        return buildErrorResponse(HttpStatus.BAD_REQUEST, "INVALID_ROLE_ASSIGNMENT", req);
     }
 
     @ExceptionHandler(LockedException.class)
