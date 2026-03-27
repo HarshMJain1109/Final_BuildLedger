@@ -27,7 +27,7 @@ public class AdminBootstrap implements ApplicationRunner {
     }
 
     private void createDefaultAdminIfNotExists() {
-        if (userRepository.existsByUsername("admin")) {
+        if (userRepository.existsByUsername("admin12")) {
             log.info("Default admin user already exists. Skipping bootstrap.");
             return;
         }
@@ -35,8 +35,8 @@ public class AdminBootstrap implements ApplicationRunner {
         log.info("Creating default admin user...");
 
         User admin = User.builder()
-                .username("admin")
-                .password(passwordEncoder.encode("admin123"))
+                .username("admin12")
+                .password(passwordEncoder.encode("Admin@123"))
                 .name("System Administrator")
                 .role(Role.ADMIN)
                 .email("admin@buildledger.com")
@@ -45,7 +45,7 @@ public class AdminBootstrap implements ApplicationRunner {
                 .build();
 
         userRepository.save(admin);
-        log.info("✅ Default admin user created. username=admin, password=admin123");
-        log.info("⚠️  IMPORTANT: Change the default admin password immediately in production!");
+        log.info("Default admin user created. username=admin, password=admin123");
+        log.info("IMPORTANT: Change the default admin password immediately in production!");
     }
 }

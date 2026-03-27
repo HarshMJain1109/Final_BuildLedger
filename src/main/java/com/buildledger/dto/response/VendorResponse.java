@@ -19,4 +19,5 @@ public class VendorResponse {
     private VendorStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Long userId;
 }

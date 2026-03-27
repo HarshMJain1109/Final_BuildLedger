@@ -42,7 +42,27 @@ public class VendorController {
     private final VendorService vendorService;
     private final AuditLogService auditLogService;
 
-    // ── Vendor CRUD ──────────────────────────────────────────────────────────
+    // ── Vendor Self-Registration (PUBLIC) ────────────────────────────────────
+
+    @PostMapping("/register")
+    @Operation(
+            summary = "Vendor self-registration [PUBLIC — no auth required]",
+            description = """
+            Vendors register themselves. No authentication needed.
+            The vendor starts in **PENDING** status.
+            Admin/PM must upload and approve documents before the vendor gets a user account.
+            A temporary password is printed in the server console on approval.
+            """
+    )
+    public ResponseEntity<ApiResponse<VendorResponse>> registerVendor(
+            @Valid @RequestBody CreateVendorRequest request) {
+        VendorResponse response = vendorService.registerVendor(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        "Vendor registered successfully. Please wait for document verification.", response));
+    }
+
+    // ── Vendor CRUD (Admin) ──────────────────────────────────────────────────
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -91,7 +111,7 @@ public class VendorController {
     @DeleteMapping("/{vendorId}")
     @PreAuthorize("hasRole('ADMIN')")
     @Operation(summary = "Delete a vendor [ADMIN only]",
-               description = "Also deletes all associated PDF documents from disk.")
+            description = "Also deletes all associated PDF documents from disk.")
     public ResponseEntity<ApiResponse<Void>> deleteVendor(
             @PathVariable Long vendorId,
             Authentication auth, HttpServletRequest httpRequest) {
@@ -104,42 +124,50 @@ public class VendorController {
     // ── Document Upload ──────────────────────────────────────────────────────
 
     @PostMapping(value = "/{vendorId}/documents", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('VENDOR') or hasRole('ADMIN')")
     @Operation(
-        summary = "Upload a compliance document PDF [VENDOR / ADMIN]",
-        description = """
-            Upload a PDF document for a vendor. File is stored in:
-            `<project-root>/uploads/vendor_{id}/uuid_filename.pdf`
-            (visible in IntelliJ under the project root — NOT inside target/).
+            summary = "Upload a compliance document PDF [PUBLIC]",
+            description = """
+        Upload a PDF document for a vendor. File is stored in:
+        `<project-root>/uploads/vendor_{id}/uuid_filename.pdf`
 
-            **Rules:**
-            - File must be `.pdf` with content-type `application/pdf`
-            - Max size: 10 MB
-            - Status starts as **PENDING**
+        **Rules:**
+        - File must be `.pdf` with content-type `application/pdf`
+        - Max size: 10 MB
+        - Status starts as **PENDING**
 
-            **Auto-status logic:**
-            After PM reviews all documents:
-            - All APPROVED → vendor status becomes **ACTIVE**
-            - Any REJECTED → vendor status becomes **SUSPENDED**
-            """
+        **Auto-status logic:**
+        After PM reviews all documents:
+        - All APPROVED → vendor status becomes **ACTIVE**
+        - Any REJECTED → vendor status becomes **SUSPENDED**
+        """
     )
     public ResponseEntity<ApiResponse<VendorDocumentResponse>> uploadDocument(
             @PathVariable Long vendorId,
             @RequestParam("file") MultipartFile file,
             @RequestParam("docType") DocumentType docType,
             @RequestParam(value = "remarks", required = false) String remarks,
-            Authentication auth,
             HttpServletRequest httpRequest) {
 
-        VendorDocumentResponse response = vendorService.uploadDocument(
-                vendorId, file, docType, remarks, auth.getName());
+        // No auth → use system identity
+        String username = "PUBLIC_USER";
 
-        auditLogService.logAction(null, auth.getName(), "UPLOAD_DOCUMENT", "VENDOR_DOCUMENT",
+        VendorDocumentResponse response = vendorService.uploadDocument(
+                vendorId, file, docType, remarks, username);
+
+        auditLogService.logAction(
+                null,
+                username,
+                "UPLOAD_DOCUMENT",
+                "VENDOR_DOCUMENT",
                 "Uploaded: " + file.getOriginalFilename() + " [" + docType + "] vendorId=" + vendorId,
-                httpRequest.getRemoteAddr());
+                httpRequest.getRemoteAddr()
+        );
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Document uploaded successfully. Awaiting review.", response));
+                .body(ApiResponse.success(
+                        "Document uploaded successfully. Awaiting review.",
+                        response
+                ));
     }
 
     // ── Document Listing ─────────────────────────────────────────────────────
@@ -155,8 +183,8 @@ public class VendorController {
     @GetMapping("/documents/pending-review")
     @PreAuthorize("hasRole('PROJECT_MANAGER') or hasRole('ADMIN')")
     @Operation(
-        summary = "Get all documents pending review [PROJECT_MANAGER / ADMIN]",
-        description = "Returns all PENDING documents across all vendors — the PM review queue."
+            summary = "Get all documents pending review [PROJECT_MANAGER / ADMIN]",
+            description = "Returns all PENDING documents across all vendors — the PM review queue."
     )
     public ResponseEntity<ApiResponse<List<VendorDocumentResponse>>> getPendingDocuments() {
         return ResponseEntity.ok(ApiResponse.success("Pending documents retrieved",
@@ -166,8 +194,8 @@ public class VendorController {
     @GetMapping("/documents/status/{status}")
     @PreAuthorize("hasRole('PROJECT_MANAGER') or hasRole('ADMIN')")
     @Operation(
-        summary = "Get documents by verification status [PROJECT_MANAGER / ADMIN]",
-        description = "Filter by: `PENDING`, `APPROVED`, `REJECTED`"
+            summary = "Get documents by verification status [PROJECT_MANAGER / ADMIN]",
+            description = "Filter by: `PENDING`, `APPROVED`, `REJECTED`"
     )
     public ResponseEntity<ApiResponse<List<VendorDocumentResponse>>> getDocumentsByStatus(
             @PathVariable VerificationStatus status) {
@@ -180,21 +208,21 @@ public class VendorController {
     @GetMapping(value = "/documents/{documentId}/download", produces = MediaType.APPLICATION_PDF_VALUE)
     @PreAuthorize("hasRole('PROJECT_MANAGER') or hasRole('ADMIN') or hasRole('VENDOR') or hasRole('COMPLIANCE_OFFICER')")
     @Operation(
-        summary = "Download vendor document PDF [PM / ADMIN / VENDOR / COMPLIANCE_OFFICER]",
-        description = """
+            summary = "Download vendor document PDF [PM / ADMIN / VENDOR / COMPLIANCE_OFFICER]",
+            description = """
             Streams the stored PDF file.
 
             **In Swagger UI:** Click Execute → then click the **Download file** link in the response.
             The PDF will open in your browser or download depending on your browser settings.
             """,
-        responses = {
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(
-                responseCode = "200",
-                description = "PDF file",
-                content = @Content(mediaType = MediaType.APPLICATION_PDF_VALUE,
-                                   schema = @Schema(type = "string", format = "binary"))
-            )
-        }
+            responses = {
+                    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+                            responseCode = "200",
+                            description = "PDF file",
+                            content = @Content(mediaType = MediaType.APPLICATION_PDF_VALUE,
+                                    schema = @Schema(type = "string", format = "binary"))
+                    )
+            }
     )
     public ResponseEntity<Resource> downloadDocument(
             @PathVariable Long documentId,
@@ -222,8 +250,8 @@ public class VendorController {
     @PutMapping("/documents/{documentId}/verify")
     @PreAuthorize("hasRole('PROJECT_MANAGER') or hasRole('ADMIN')")
     @Operation(
-        summary = "Review vendor document — APPROVED or REJECTED [PROJECT_MANAGER / ADMIN]",
-        description = """
+            summary = "Review vendor document — APPROVED or REJECTED [PROJECT_MANAGER / ADMIN]",
+            description = """
             ✅ PROJECT_MANAGER and ADMIN can approve or reject a vendor document.
             ❌ VENDOR cannot review their own documents.
 
@@ -251,7 +279,7 @@ public class VendorController {
 
         auditLogService.logAction(null, auth.getName(), "REVIEW_DOCUMENT", "VENDOR_DOCUMENT",
                 "Document id=" + documentId + " → " + status
-                + (reviewRemarks != null ? " | " + reviewRemarks : ""),
+                        + (reviewRemarks != null ? " | " + reviewRemarks : ""),
                 httpRequest.getRemoteAddr());
 
         String message = status == VerificationStatus.APPROVED

@@ -50,6 +50,15 @@ public class User {
     @Builder.Default
     private UserStatus status = UserStatus.ACTIVE;
 
+    /**
+     * Optimistic locking — prevents concurrent updates from silently clobbering each other.
+     * Any concurrent writer that loaded a stale version will receive an
+     * {@link jakarta.persistence.OptimisticLockException} and must retry.
+     */
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     @CreatedDate
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
